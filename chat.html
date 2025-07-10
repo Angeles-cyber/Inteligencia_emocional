@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Asistente Emocional</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: #f8f9fc;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      background-color: #6c63ff;
+      color: white;
+      padding: 20px;
+      width: 100%;
+      text-align: center;
+      font-size: 1.5em;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    #chatbox {
+      width: 90%;
+      max-width: 600px;
+      margin-top: 30px;
+      padding: 20px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+    }
+
+    #messages {
+      max-height: 350px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .message {
+      margin-bottom: 12px;
+      padding: 10px 15px;
+      border-radius: 10px;
+      line-height: 1.4em;
+    }
+
+    .user {
+      background: #dceffe;
+      text-align: right;
+    }
+
+    .bot {
+      background: #f3f0ff;
+      text-align: left;
+    }
+
+    #inputArea {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    button {
+      padding: 10px 16px;
+      background-color: #6c63ff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #5548d8;
+    }
+
+    @media (max-width: 500px) {
+      #inputArea {
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>🧠 Tu Asistente Emocional</header>
+
+  <div id="chatbox">
+    <div id="messages"></div>
+    <div id="inputArea">
+      <input type="text" id="userInput" placeholder="¿Cómo te sientes hoy?" />
+      <button onclick="sendMessage()">Enviar</button>
+      <button onclick="startVoiceInput()">🎤</button>
+    </div>
+  </div>
+
+  <script>
+    let selectedVoice = null;
+
+    function loadVoices() {
+      const voices = speechSynthesis.getVoices();
+      const preferredVoices = [
+        "Google español",           // Chrome
+        "Microsoft Helena",         // Windows
+        "Microsoft Laura",
+        "Google UK English Female",
+        "Google Standard",
+        "es-ES"
+      ];
+
+      selectedVoice = voices.find(v =>
+        preferredVoices.some(name => v.name.includes(name) || v.lang === name)
+      ) || voices.find(v => v.lang.startsWith("es")) || voices[0];
+
+      console.log("🔊 Voz seleccionada:", selectedVoice?.name || "Ninguna encontrada");
+    }
+
+    // Esperar a que se carguen las voces
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    window.onload = () => {
+      loadVoices();
+      const bienvenida = "Hola, estoy aquí para escucharte con atención. ¿Qué te gustaría compartir hoy?";
+      addMessage(bienvenida, "bot");
+      speakText(bienvenida);
+    };
+
+    // Reproduce la respuesta con voz femenina
+    function speakText(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice?.lang || "es-ES";
+      utterance.pitch = 1.4;   // voz más aguda = más femenina
+      utterance.rate = 0.95;   // ligeramente más lento
+      utterance.volume = 1;
+      speechSynthesis.cancel(); // detener cualquier voz anterior
+      speechSynthesis.speak(utterance);
+    }
+
+    // Agrega un mensaje al chat
+    function addMessage(text, sender) {
+      const div = document.createElement("div");
+      div.className = "message " + sender;
+      div.innerText = text;
+      document.getElementById("messages").appendChild(div);
+      document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+    }
+
+    // Enviar mensaje al servidor
+    function sendMessage() {
+      const input = document.getElementById("userInput");
+      const message = input.value.trim();
+      if (message === "") return;
+
+      addMessage(message, "user");
+      input.value = "";
+
+      fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message })
+      })
+        .then(res => res.json())
+        .then(data => {
+          const reply = data.reply;
+          addMessage(reply, "bot");
+          speakText(reply);
+        })
+        .catch(err => {
+          console.error("Error:", err);
+          addMessage("❌ Ocurrió un error al procesar tu mensaje.", "bot");
+        });
+    }
+
+    // Activar entrada por voz (solo en Chrome/Edge)
+    function startVoiceInput() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("🎤 Tu navegador no soporta entrada por voz.");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = "es-ES";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.start();
+
+      recognition.onresult = function (event) {
+        const result = event.results[0][0].transcript;
+        document.getElementById("userInput").value = result;
+        sendMessage();
+      };
+
+      recognition.onerror = function (event) {
+        console.error("Error de voz:", event.error);
+        alert("❌ No se pudo reconocer tu voz. Intenta nuevamente.");
+      };
+    }
+  </script>
+</body>
+</html>
